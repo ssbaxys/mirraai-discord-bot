@@ -1,0 +1,32 @@
+{
+    "channels": {
+        "1466119533856030780": {
+            "enabled": false,
+            "model": "Gemini 3 Pro",
+            "deepwork": true
+        },
+        "1330528962367197190": {
+            "enabled": true,
+            "model": "ssbaxys-realtime-1",
+            "deepwork": false
+        },
+        "1425500303779696660": {
+            "enabled": true,
+            "model": "Gemini 3 Pro",
+            "deepwork": true
+        },
+        "1441488065435799609": {
+            "enabled": false,
+            "model": "Mistral Large",
+            "deepwork": true
+        }
+    },
+    "global": {
+        "blocked_models": [
+            "GPT-5.2 Codex",
+            "Claude Opus 4.5"
+        ],
+        "deepwork_allowed": false,
+        "error_log": {}
+    }
+}
