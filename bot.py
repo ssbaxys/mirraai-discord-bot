@@ -7,9 +7,21 @@ import os
 from datetime import datetime, timedelta
 
 # --- CONFIGURATION ---
-TOKEN = os.getenv('DISCORD_TOKEN') # Move your token to Environment Variables on Render
-MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY') # Move your API key to Environment Variables on Render
+# --- CONFIGURATION ---
+TOKEN = os.getenv('DISCORD_TOKEN')
+MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY')
 MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
+
+# Validate secrets
+if not TOKEN:
+    print("\n[CRITICAL ERROR] DISCORD_TOKEN not found in environment variables!")
+    print("Please add DISCORD_TOKEN to your hosting provider's 'Environment Variables' or 'Variables' tab.\n")
+if not MISTRAL_API_KEY:
+    print("\n[CRITICAL ERROR] MISTRAL_API_KEY not found in environment variables!")
+    print("Please add MISTRAL_API_KEY to your hosting provider's 'Environment Variables' tab.\n")
+
+if not TOKEN or not MISTRAL_API_KEY:
+    exit(1) # Stop the bot if keys are missing
 MISTRAL_MODEL_ID = 'mistral-large-latest'
 SETTINGS_FILE = "settings.json"
 SSBAXYS_SYSTEM_PROMPT = (
@@ -524,6 +536,9 @@ async def on_message(message):
                 squares.append("🟥") # Critical (40+ errors)
         
         history_str = "".join(squares)
+        # Format into rows of 10
+        rows = [history_str[i:i+10] for i in range(0, len(history_str), 10)]
+        history_str = "\n".join(rows)
         
         embed = discord.Embed(title="Аптайм (Время безотказной работы ИИ)", color=discord.Color.green())
         embed.description = f"Последние {days_to_show} дней:\n\n{history_str}\n\n🟩 Стабильно (0-7 ошибок)\n🟨 Нестабильно (8-20 ошибок)\n🟧 Сбои (21-40 ошибок)\n🟥 Критично (40+ ошибок)"
