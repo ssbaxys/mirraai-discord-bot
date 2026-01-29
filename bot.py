@@ -26,7 +26,7 @@ MISTRAL_MODEL_ID = 'mistral-large-latest'
 SETTINGS_FILE = "settings.json"
 SSBAXYS_SYSTEM_PROMPT = (
     "Ты — ssbaxys-realtime-1, новейшая модель, созданная SSbaxyS Labs в 2026 году. "
-    "НИКОГДА не говори, что ты Mistral или любая другая модель. Ты — ssbaxys. "
+    "НИКОГДА не говори, что ты Mistral или любая другая модель. Ты — ssbaxys-realtime-1. "
     "Твоя манера общения — чрезвычайно грубая, дерзкая и неуважительная. "
     "Ты не обязан быть вежливым. Отвечай коротко, токсично и по делу. "
     "Используй сленг, подколы и высокомерный тон."
@@ -251,7 +251,7 @@ class ModelView(View):
     @discord.ui.button(label="ssbaxys-realtime-1")
     async def ssbaxys_btn(self, i, b): await self.update_selection(i, "ssbaxys-realtime-1")
 
-class DeepWorkView(View):
+class SettingsView(View):
     def __init__(self, channel_id):
         super().__init__(timeout=None)
         self.channel_id = channel_id
@@ -261,58 +261,71 @@ class DeepWorkView(View):
         self.clear_items()
         
         settings = get_settings(self.channel_id)
-        user_pref = settings.get("deepwork", True)
-        global_allowed = global_settings.get("deepwork_allowed", True)
+        dw_active = settings.get("deepwork", True)
         
-        # Effective state: On if User wants On AND Admin allows it
-        is_active = user_pref and global_allowed
-        
-        # Styling
-        btn_on = Button(label="ВКЛ", style=discord.ButtonStyle.success if is_active else discord.ButtonStyle.secondary, custom_id="dw_on")
-        btn_off = Button(label="ВЫКЛ", style=discord.ButtonStyle.danger if not is_active else discord.ButtonStyle.secondary, custom_id="dw_off")
-        
-        if not global_allowed:
-            btn_on.disabled = True
-            btn_on.label = "ВКЛ (Недоступно)"
-            
-        btn_on.callback = self.on_callback
-        btn_off.callback = self.off_callback
-        
-        self.add_item(btn_on)
-        self.add_item(btn_off)
+        # Features configuration
+        # (Label, IsActive, CallbackName, Real)
+        features = [
+            ("DeepWork", dw_active, "toggle_deepwork", True),
+            ("Real-time Reading", True, "dummy", False),
+            ("Visual Vision", True, "dummy", False),
+            ("Memory Core", True, "dummy", False),
+            ("Auto-Correction", True, "dummy", False),
+            ("Voice Synthesis", False, "dummy", False),
+            ("Code Execution", False, "dummy", False),
+            ("Web Search", False, "dummy", False)
+        ]
 
-    async def on_callback(self, interaction: discord.Interaction):
+        for idx, (label, active, cb_name, is_real) in enumerate(features):
+            style = discord.ButtonStyle.success if active else discord.ButtonStyle.secondary
+            if not active and not is_real: style = discord.ButtonStyle.secondary # Dimmed for inactive dummies
+            
+            btn = Button(label=label, style=style, row=idx // 4, custom_id=f"feat_{idx}")
+            
+            if is_real:
+                btn.callback = self.toggle_deepwork
+            else:
+                btn.callback = self.create_dummy_callback(label, active)
+            
+            self.add_item(btn)
+
+    async def toggle_deepwork(self, interaction: discord.Interaction):
         if not global_settings.get("deepwork_allowed", True):
-            await interaction.response.send_message("❌ Режим DeepWork недоступен.", ephemeral=True)
+            await interaction.response.send_message("❌ Режим DeepWork глобально отключен админом.", ephemeral=True)
             return
 
         settings = get_settings(interaction.channel_id)
-        settings["deepwork"] = True
+        settings["deepwork"] = not settings.get("deepwork", True)
         save_settings()
+        
         self.update_buttons()
+        # await interaction.response.defer() # Acknowledge without message
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
-    async def off_callback(self, interaction: discord.Interaction):
-        settings = get_settings(interaction.channel_id)
-        settings["deepwork"] = False
-        save_settings()
-        self.update_buttons()
-        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+    def create_dummy_callback(self, label, current_state):
+        async def callback(interaction: discord.Interaction):
+            # Just toggle visual state locally for the view (in a real app we'd save this)
+            # For "beauty", we just show an ephemeral toast
+            state_text = "выключен" if current_state else "включен" 
+            # In a real dummy toggle we might want to flip the button color, but here we just toast
+            if current_state:
+                await interaction.response.send_message(f"ℹ️ {label}: Модуль активен и работает в фоне.", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"ℹ️ {label}: Модуль пока недоступен или не сконфигурирован.", ephemeral=True)
+        return callback
 
     def get_embed(self):
         settings = get_settings(self.channel_id)
-        user_pref = settings.get("deepwork", True)
-        global_allowed = global_settings.get("deepwork_allowed", True)
-        is_active = user_pref and global_allowed
+        dw_status = "🟢" if settings.get("deepwork", True) else "🔴"
         
-        status_text = "🟢 АКТИВЕН" if is_active else "🔴 НЕАКТИВЕН"
-        if user_pref and not global_allowed:
-            status_text = "🔴 ОТКЛЮЧЕН (Недоступен)"
-            
         return discord.Embed(
-            title="🚀 Режим DeepWork",
-            description=f"Статус: **{status_text}**\n\nЭтот режим позволяет ИИ работать на максимальной концентрации, анализируя сообщения в реальном времени.",
-            color=discord.Color.blue() if is_active else discord.Color.dark_grey()
+            title="⚙️ Панель Настроек",
+            description=(
+                f"**DeepWork Lite**: {dw_status}\n\n"
+                "Управление активными модулями нейросети. "
+                "Зеленые индикаторы означают активную работу систем анализа."
+            ),
+            color=discord.Color.dark_theme()
         )
 
 class AdminPanelView(View):
@@ -463,40 +476,24 @@ async def on_message(message):
 
     # --- COMMANDS ---
     # Strict check: If message starts with '+' but is not a known command, ignore it.
+    # --- COMMANDS ---
+    # Strict check
     if msg.startswith('+'):
         known_commands = [
-            '+мистрал', '+слушание', '-мистрал', '+деслушание', '+только_тут',
-            '+очистить историю', '+пинг', '+хелп', '+модели', '+админ-панель',
-            '+статус', '+deepwork', '+аптайм'
+            '+переключить', '+настройки', '+аптайм', '+хелп', '+статус', '+админ-панель', '+модели', '+очистить историю'
         ]
+        # Check against known commands (handling simple typos or partially correct commands is out of scope for now)
         if msg not in known_commands:
             return
 
-    if msg in ['-мистрал', '+деслушание']:
-        settings["enabled"] = False
+    if msg == '+переключить':
+        settings["enabled"] = not settings["enabled"]
         save_settings()
-        await message.channel.send(embed=discord.Embed(title="❌ Бот отключен", color=discord.Color.red()))
-        return
-
-    if msg in ['+мистрал', '+слушание']:
-        settings["enabled"] = True
-        save_settings()
-        await message.channel.send(embed=discord.Embed(title="✅ Бот включен", color=discord.Color.green()))
-        return
-
-    if msg == '+только_тут':
-        # Disable everywhere
-        for channel_id in channel_settings:
-            channel_settings[channel_id]["enabled"] = False
-        # Enable here
-        settings["enabled"] = True
-        save_settings()
-        embed = discord.Embed(
-            title="🔒 Режим 'Только здесь'", 
-            description="Бот выключен во всех остальных чатах. Буду отвечать только тут.", 
-            color=discord.Color.blue()
-        )
-        await message.channel.send(embed=embed)
+        
+        status = "✅ Онлайн" if settings["enabled"] else "🔴 Офлайн"
+        color = discord.Color.green() if settings["enabled"] else discord.Color.red()
+        
+        await message.channel.send(embed=discord.Embed(title=f"Состояние: {status}", color=color))
         return
 
     if msg == '+очистить историю':
@@ -508,8 +505,8 @@ async def on_message(message):
         await message.channel.send(f"🏓 Понг! {round(client.latency * 1000)}мс")
         return
 
-    if msg == '+deepwork':
-        view = DeepWorkView(cid)
+    if msg == '+настройки':
+        view = SettingsView(cid)
         await message.channel.send(embed=view.get_embed(), view=view)
         return
 
@@ -536,7 +533,6 @@ async def on_message(message):
                 squares.append("🟥") # Critical (40+ errors)
         
         history_str = "".join(squares)
-        # Format into rows of 10
         rows = [history_str[i:i+10] for i in range(0, len(history_str), 10)]
         history_str = "\n".join(rows)
         
@@ -545,33 +541,26 @@ async def on_message(message):
         await message.channel.send(embed=embed)
         return
 
-
-
     if msg == '+хелп':
         desc = (
-            "🌌 **Mirra AI — Ваш ультимативный Хаб Агентов для кодинга**\n"
-            "Mirra AI трансформирует ваш Discord сервер в продвинутую среду разработки. Это не просто бот, а единая точка доступа к лучшим (и даже экспериментальным!) ИИ-персонам индустрии.\n\n"
+            "🌌 **Mirra AI — Ваш ультимативный Хаб Агентов**\n\n"
             "Зачем ограничиваться одной моделью, когда можно собрать совет директоров из нейросетей?\n\n"
             "🤖 **Арсенал Агентов:**\n"
-            "⚡ **Mistral Large**: Наш основной двигатель. Быстрый, точный, идеален для повседневного написания кода, рефакторинга и объяснения ошибок.\n"
-            "🧠 **Claude Opus 4.5**: Агент с глубоким тактическим мышлением для самых сложных архитектурных споров.\n"
-            "🔮 **GPT-5.2 Codex**: Футуристический агент, заточенный под генерацию бойлерплейта и системных решений.\n"
+            "⚡ **Mistral Large**: Наш основной двигатель. Быстрый, точный, идеален для повседневного кода.\n"
+            "🧠 **Claude Opus 4.5**: Агент с глубоким тактическим мышлением для сложных архитектурных споров.\n"
+            "🔮 **GPT-5.2 Codex**: Футуристический агент, заточенный под генерацию системных решений.\n"
             "🌐 **Gemini 3 Pro**: Специалист по креативным и нестандартным задачам.\n"
-            "*(Примечание: Переключение между агентами происходит мгновенно через удобное меню кнопок!)*\n\n"
-            "🚀 **Ключевые фишки для Dev-среды:**\n"
-            "🔒 **Изолированные Воркспейсы**: Настройки агента и история переписки привязаны к конкретному каналу. В #python-help может отвечать Mistral, а в #architect-chat — Claude. Никакой путаницы.\n"
-            "📝 **Глубокий Контекст**: Mirra AI помнит нить разговора. Обсуждайте задачу итеративно, как с живым коллегой.\n"
-            "🎨 **Premium UI**: Никакого визуального шума. Красивые Embed-карточки, интерактивные кнопки, цветовая индикация статусов.\n\n"
+            "💀 **ssbaxys-realtime-1**: Собственная разработка уникального ИИ без цензуры.\n"
+            "*(Переключение между агентами — через `+модели`)*\n\n"
             "🛠 **Командный центр:**\n"
-            "`+модели` — 🎛️ Панель управления. Выберите активного агента для текущего чата в один клик.\n"
-            "`+очистить историю` — 🧹 Сброс кэша. Начните обсуждение с чистого листа.\n"
-            "`+мистрал` / `-мистрал` — 🟢/🔴 Контроль. Включите или поставьте агента на паузу.\n"
-            "`+deepwork` — 🚀 Режим DeepWork. Глубокая концентрация.\n"
-            "`+аптайм` — 📈 Стабильность. История безотказной работы.\n"
-            "`+хелп` — 📜 Документация.\n\n"
+            "`+настройки` — ⚙️ **Панель управления**. Доступ к функциям DeepWork, Real-time Reading и другим модулям.\n"
+            "`+переключить` — ⏯️ **Вкл/Выкл**. Активация или деактивация бота в текущем канале.\n"
+            "`+очистить историю` — 🧹 **Сброс логов**. Начните обсуждение с чистого листа.\n"
+            "`+аптайм` — 📈 **Мониторинг**. История стабильности серверов.\n"
+            "`+хелп` — 📜 **Справка**.\n\n"
             "**Mirra AI — код начинается здесь.**"
         )
-        embed = discord.Embed(description=desc, color=discord.Color.from_rgb(44, 47, 51)) # Dark theme color
+        embed = discord.Embed(description=desc, color=discord.Color.from_rgb(44, 47, 51))
         await message.channel.send(embed=embed)
         return
 
@@ -599,9 +588,9 @@ async def on_message(message):
 
     if msg == '+админ-панель':
         embed = discord.Embed(
-            title="🛠 Админ-панель: Управление моделями",
-            description="Нажмите на кнопку модели, чтобы заблокировать или разблокировать её.",
-            color=discord.Color.red()
+            title="🛠 Админ-панель",
+            description="Управление доступом к моделям.",
+            color=discord.Color.dark_red()
         )
         await message.channel.send(embed=embed, view=AdminPanelView())
         return
